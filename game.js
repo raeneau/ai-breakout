@@ -1,3 +1,10 @@
+// At the very start of game.js, before any other code
+window.score = 0;
+
+// Add these at the start of game.js
+let tempBalls = []; // Array for shadow balls
+let tempBallHits = []; // Array for tracking shadow ball hits
+
 // Game constants
 const PADDLE_WIDTH = 100;
 const PADDLE_HEIGHT = 20;
@@ -22,20 +29,10 @@ const BRICK_COLORS = {
 };
 const STRONG_BRICK_HITS = 3;
 const SUPER_BRICK_HITS = 5;
-const SHADOW_BALL_COST = 50;
 const TEMP_BALL_HITS = 5;
-const SHADOW_BALL_BASE_CHANCE = 0.05; // 5% initial chance
-const SHADOW_BALL_CHANCE_INCREMENT = 0.05; // 5% per upgrade
-const SHADOW_BALL_MAX_CHANCE = 0.3; // 30% maximum chance
-const SHADOW_CHANCE_UPGRADE_COST = 30; // Cost for each chance increase
 const SPARKLE_COUNT = 10; // Number of particles per hit
 const SPARKLE_SPEED = 3; // Base speed of particles
 const SPARKLE_LIFETIME = 30; // How many frames the sparkles last
-const BURN_UPGRADE_COST = 75;
-const BURN_CHANCE_BASE = 0.05; // 5% initial chance
-const BURN_CHANCE_INCREMENT = 0.05; // 5% per upgrade
-const BURN_CHANCE_MAX = 0.3; // 30% maximum chance
-const BURN_CHANCE_UPGRADE_COST = 30; // Cost for each chance increase
 
 const BURN_DAMAGE_INTERVAL = 60; // 1 damage per second (60 frames)
 const BURN_DURATION = 120; // 2 seconds (120 frames)
@@ -60,18 +57,13 @@ let lastHitByPaddle = false; // Track if the last hit was by paddle
 let isPaused = false;
 let strongBrickChance = 0.2; // 20% chance for a strong brick
 let superBrickChance = 0.1; // 10% chance for a super brick
-let hasShadowBallUpgrade = false;
-let tempBalls = []; // Array to store temporary balls
-let tempBallHits = []; // Array to track hits for each temp ball
-let shadowBallChance = SHADOW_BALL_BASE_CHANCE;
-let shadowBallChanceLevel = 0; // Tracks number of chance upgrades purchased
 let bricksDestroyed = 0;
 let paddleBonusPoints = 0;
 let sparkles = []; // Array to hold active sparkle particles
-let hasBurnUpgrade = false;
 let burningBricks = new Map(); // Map to track burning bricks with their timers
 let burnChance = BURN_CHANCE_BASE;
 let burnChanceLevel = 0;
+let currentRound = 1;
 
 // Create bricks array
 let bricks = [];
@@ -138,7 +130,9 @@ function addNewBricks() {
       bricks[c][r] = createBrick(brickX, brickY);
     }
   }
-  return true; // Always return true since we always add bricks
+  currentRound++; // Increment round when new bricks are added
+  updateStats(); // Update the display
+  return true;
 }
 
 // Add function to check if all bricks are cleared
@@ -191,7 +185,7 @@ function collisionDetection() {
             if (!addNewBricks()) {
               // If we couldn't add new bricks, end the game as win
               gameOver = true;
-              score += lastHitByPaddle
+              window.score += lastHitByPaddle
                 ? pointsSinceLastMiss * 2
                 : pointsSinceLastMiss;
               ctx.font = "32px Arial";
@@ -281,7 +275,7 @@ function drawScore() {
   ctx.font = "16px Arial";
   ctx.fillStyle = "#0095DD";
   ctx.textAlign = "left";
-  ctx.fillText("Score: " + score, 8, 20);
+  ctx.fillText("Score: " + window.score, 8, 20);
 
   // Show potential points if there are any accumulated
   if (pointsSinceLastMiss > 0) {
@@ -302,7 +296,7 @@ function drawResetButton() {
 }
 
 function resetGame() {
-  score = 0;
+  window.score = 0;
   gameOver = false;
   ballX = canvas.width / 2;
   ballY = canvas.height - 30;
@@ -327,18 +321,16 @@ function resetGame() {
   lastHitByPaddle = false;
   tempBalls = [];
   tempBallHits = [];
-  hasShadowBallUpgrade = false;
-  shadowBallChance = SHADOW_BALL_BASE_CHANCE;
-  shadowBallChanceLevel = 0;
   bricksDestroyed = 0;
   paddleBonusPoints = 0;
   updateStats();
   updateShopUI();
   sparkles = [];
-  hasBurnUpgrade = false;
   burningBricks.clear();
   burnChance = BURN_CHANCE_BASE;
   burnChanceLevel = 0;
+  resetShop();
+  currentRound = 1;
 }
 
 // Add click event listener after the other event listeners
@@ -418,7 +410,7 @@ function draw() {
         const normalPoints = pointsSinceLastMiss;
         const totalPoints = pointsSinceLastMiss * 2;
         const bonus = totalPoints - normalPoints;
-        score += totalPoints;
+        window.score += totalPoints;
         paddleBonusPoints += bonus;
         pointsSinceLastMiss = 0;
         lastHitByPaddle = true;
@@ -441,7 +433,7 @@ function draw() {
         }
       } else {
         // Bottom wall hit - add regular points and reset
-        score += pointsSinceLastMiss;
+        window.score += pointsSinceLastMiss;
         pointsSinceLastMiss = 0;
         lastHitByPaddle = false;
         ballSpeedY = -ballSpeedY; // Bounce instead of ending game
@@ -567,7 +559,7 @@ function draw() {
     updateBurningBricks();
   } else {
     // If game is over, just show the game over screen and reset button
-    if (score === BRICK_ROWS * BRICK_COLS) {
+    if (window.score === BRICK_ROWS * BRICK_COLS) {
       ctx.font = "32px Arial";
       ctx.fillStyle = "#0095DD";
       ctx.textAlign = "center";
@@ -617,18 +609,6 @@ function createBrick(x, y) {
   };
 }
 
-// Add this after the other event listeners
-document
-  .getElementById("multiballUpgrade")
-  .addEventListener("click", function () {
-    if (!hasShadowBallUpgrade && score >= SHADOW_BALL_COST) {
-      score -= SHADOW_BALL_COST;
-      hasShadowBallUpgrade = true;
-      this.textContent = "SHADOW BALL (Purchased)";
-      this.classList.add("purchased");
-    }
-  });
-
 // Add this function to update shop UI
 function updateShopUI() {
   // Shadow upgrades
@@ -641,7 +621,7 @@ function updateShopUI() {
     shadowChanceButton.classList.remove("locked");
   } else {
     shadowBallButton.textContent = `SHADOW BALL (${SHADOW_BALL_COST} points)`;
-    if (score >= SHADOW_BALL_COST) {
+    if (window.score >= SHADOW_BALL_COST) {
       shadowBallButton.classList.remove("disabled");
     } else {
       shadowBallButton.classList.add("disabled");
@@ -658,7 +638,7 @@ function updateShopUI() {
       shadowChanceButton.textContent = `SHADOW CHANCE (+${
         SHADOW_BALL_CHANCE_INCREMENT * 100
       }%) (${SHADOW_CHANCE_UPGRADE_COST} pts)`;
-      if (score >= SHADOW_CHANCE_UPGRADE_COST) {
+      if (window.score >= SHADOW_CHANCE_UPGRADE_COST) {
         shadowChanceButton.classList.remove("disabled");
       } else {
         shadowChanceButton.classList.add("disabled");
@@ -678,7 +658,7 @@ function updateShopUI() {
     burnChanceButton.classList.remove("locked");
   } else {
     burnButton.textContent = `BURN CHANCE (${BURN_UPGRADE_COST} points)`;
-    if (score >= BURN_UPGRADE_COST) {
+    if (window.score >= BURN_UPGRADE_COST) {
       burnButton.classList.remove("disabled");
     } else {
       burnButton.classList.add("disabled");
@@ -695,7 +675,7 @@ function updateShopUI() {
       burnChanceButton.textContent = `BURN CHANCE (+${
         BURN_CHANCE_INCREMENT * 100
       }%) (${BURN_CHANCE_UPGRADE_COST} pts)`;
-      if (score >= BURN_CHANCE_UPGRADE_COST) {
+      if (window.score >= BURN_CHANCE_UPGRADE_COST) {
         burnChanceButton.classList.remove("disabled");
       } else {
         burnChanceButton.classList.add("disabled");
@@ -713,9 +693,9 @@ document
     if (
       hasShadowBallUpgrade &&
       shadowBallChance < SHADOW_BALL_MAX_CHANCE &&
-      score >= SHADOW_CHANCE_UPGRADE_COST
+      window.score >= SHADOW_CHANCE_UPGRADE_COST
     ) {
-      score -= SHADOW_CHANCE_UPGRADE_COST;
+      window.score -= SHADOW_CHANCE_UPGRADE_COST;
       shadowBallChance += SHADOW_BALL_CHANCE_INCREMENT;
       shadowBallChanceLevel++;
       updateShopUI();
@@ -728,6 +708,7 @@ function updateStats() {
   document.getElementById("currentStreak").textContent = pointsSinceLastMiss;
   document.getElementById("paddleBonusPoints").textContent = paddleBonusPoints;
   document.getElementById("activeShadowBalls").textContent = tempBalls.length;
+  document.getElementById("currentRound").textContent = currentRound;
 
   const shadowBallStats = document.getElementById("shadowBallStats");
   if (hasShadowBallUpgrade) {
@@ -819,8 +800,8 @@ function updateBurningBricks() {
 
 // Add burn upgrade button handler
 document.getElementById("burnUpgrade").addEventListener("click", function () {
-  if (!hasBurnUpgrade && score >= BURN_UPGRADE_COST) {
-    score -= BURN_UPGRADE_COST;
+  if (!hasBurnUpgrade && window.score >= BURN_UPGRADE_COST) {
+    window.score -= BURN_UPGRADE_COST;
     hasBurnUpgrade = true;
     this.textContent = "BURN CHANCE (Purchased)";
     this.classList.add("purchased");
@@ -834,9 +815,9 @@ document
     if (
       hasBurnUpgrade &&
       burnChance < BURN_CHANCE_MAX &&
-      score >= BURN_CHANCE_UPGRADE_COST
+      window.score >= BURN_CHANCE_UPGRADE_COST
     ) {
-      score -= BURN_CHANCE_UPGRADE_COST;
+      window.score -= BURN_CHANCE_UPGRADE_COST;
       burnChance += BURN_CHANCE_INCREMENT;
       burnChanceLevel++;
       updateShopUI();
@@ -864,3 +845,6 @@ document.querySelectorAll(".tab").forEach((tab) => {
     document.getElementById(tabId).style.display = "block";
   });
 });
+
+// Add after the game starts
+initializeShop();
