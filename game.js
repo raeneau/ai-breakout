@@ -15,8 +15,8 @@ const SPEED_INCREMENT = 0.0005;
 const PADDLE_SPEED = 4; // Reduced from 6 for more precise control
 const PADDLE_ACCELERATION = 0.4; // Reduced from 0.8 for gentler acceleration
 const PADDLE_FRICTION = 0.9; // Increased from 0.85 for smoother deceleration
-const MIN_NEW_BRICKS = 3; // Minimum number of bricks to add in new wave
-const MAX_NEW_BRICKS = 20; // Maximum number of bricks to add in new wave
+const MIN_NEW_BRICKS = 20; // Minimum number of bricks to add in new wave
+const MAX_NEW_BRICKS = 40; // Maximum number of bricks to add in new wave
 const BRICK_COLORS = {
   NORMAL: "#0095DD",
   STRONG: "#800080", // Purple
@@ -24,10 +24,20 @@ const BRICK_COLORS = {
 };
 const STRONG_BRICK_HITS = 3;
 const SUPER_BRICK_HITS = 5;
-const SHOP_BUTTON_WIDTH = 100;
-const SHOP_BUTTON_HEIGHT = 40;
-const MULTIBALL_COST = 50;
+const SHADOW_BALL_COST = 50;
 const TEMP_BALL_HITS = 5;
+const SHADOW_BALL_BASE_CHANCE = 0.05; // 5% initial chance
+const SHADOW_BALL_CHANCE_INCREMENT = 0.05; // 5% per upgrade
+const SHADOW_BALL_MAX_CHANCE = 0.3; // 30% maximum chance
+const SHADOW_CHANCE_UPGRADE_COST = 30; // Cost for each chance increase
+const SPARKLE_COUNT = 10; // Number of particles per hit
+const SPARKLE_SPEED = 3; // Base speed of particles
+const SPARKLE_LIFETIME = 30; // How many frames the sparkles last
+const BURN_UPGRADE_COST = 75;
+const BURN_CHANCE = 0.15; // 15% chance to burn
+
+const BURN_DAMAGE_INTERVAL = 60; // 1 damage per second (60 frames)
+const BURN_DURATION = 120; // 2 seconds (120 frames)
 
 // Game variables
 let canvas = document.getElementById("gameCanvas");
@@ -49,10 +59,16 @@ let lastHitByPaddle = false; // Track if the last hit was by paddle
 let isPaused = false;
 let strongBrickChance = 0.2; // 20% chance for a strong brick
 let superBrickChance = 0.1; // 10% chance for a super brick
-let shopOpen = false;
-let hasMultiballUpgrade = false;
+let hasShadowBallUpgrade = false;
 let tempBalls = []; // Array to store temporary balls
 let tempBallHits = []; // Array to track hits for each temp ball
+let shadowBallChance = SHADOW_BALL_BASE_CHANCE;
+let shadowBallChanceLevel = 0; // Tracks number of chance upgrades purchased
+let bricksDestroyed = 0;
+let paddleBonusPoints = 0;
+let sparkles = []; // Array to hold active sparkle particles
+let hasBurnUpgrade = false;
+let burningBricks = new Map(); // Map to track burning bricks with their timers
 
 // Create bricks array
 let bricks = [];
@@ -169,9 +185,24 @@ function collisionDetection() {
           ballY < b.y + BRICK_HEIGHT
         ) {
           ballSpeedY = -ballSpeedY;
+          const originalStatus = b.status;
           b.status--;
+
+          // Apply burn effect
+          if (hasBurnUpgrade && Math.random() < BURN_CHANCE) {
+            const brickKey = `${c},${r}`;
+            if (!burningBricks.has(brickKey) && b.status > 0) {
+              burningBricks.set(brickKey, {
+                ...b,
+                burnTimer: 0,
+              });
+            }
+          }
+
           if (b.status === 0) {
-            pointsSinceLastMiss++; // Only award points when brick is destroyed
+            pointsSinceLastMiss += originalStatus;
+            bricksDestroyed++;
+            burningBricks.delete(`${c},${r}`);
           }
           // Check if all bricks are cleared
           if (areBricksCleared()) {
@@ -231,14 +262,21 @@ function drawBricks() {
         } else if (bricks[c][r].status === STRONG_BRICK_HITS) {
           ctx.fillStyle = BRICK_COLORS.STRONG;
         } else if (bricks[c][r].status > 1) {
-          // Mix colors for intermediate hits
           const mixColor =
             bricks[c][r].status >= 3 ? BRICK_COLORS.SUPER : BRICK_COLORS.STRONG;
-          ctx.fillStyle = mixColor + "77"; // Add transparency
+          ctx.fillStyle = mixColor + "77";
         } else {
           ctx.fillStyle = BRICK_COLORS.NORMAL;
         }
         ctx.fill();
+
+        // Add red border if brick is burning
+        const brickKey = `${c},${r}`;
+        if (burningBricks.has(brickKey)) {
+          ctx.strokeStyle = "#FF0000";
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
         ctx.closePath();
 
         // Add hit count text
@@ -308,8 +346,16 @@ function resetGame() {
   lastHitByPaddle = false;
   tempBalls = [];
   tempBallHits = [];
-  hasMultiballUpgrade = false;
-  shopOpen = false;
+  hasShadowBallUpgrade = false;
+  shadowBallChance = SHADOW_BALL_BASE_CHANCE;
+  shadowBallChanceLevel = 0;
+  bricksDestroyed = 0;
+  paddleBonusPoints = 0;
+  updateStats();
+  updateShopUI();
+  sparkles = [];
+  hasBurnUpgrade = false;
+  burningBricks.clear();
 }
 
 // Add click event listener after the other event listeners
@@ -330,6 +376,25 @@ canvas.addEventListener("click", function (e) {
     }
   }
 });
+
+// Add this helper function to generate random ball velocity
+function getRandomBallVelocity() {
+  const angle = Math.random() * Math.PI * 2; // Random angle between 0 and 2π
+  return {
+    x: INITIAL_BALL_SPEED * Math.cos(angle),
+    y: INITIAL_BALL_SPEED * Math.sin(angle),
+  };
+}
+
+// Add this helper function to ensure minimum angle for shadow balls
+function getRandomShadowBallVelocity() {
+  // Random angle between 45 and 135 degrees (in radians)
+  const angle = ((Math.random() * 90 + 45) * Math.PI) / 180;
+  return {
+    x: INITIAL_BALL_SPEED * Math.cos(angle),
+    y: -INITIAL_BALL_SPEED * Math.sin(angle), // Negative because y increases downward
+  };
+}
 
 // Main game loop
 function draw() {
@@ -367,20 +432,29 @@ function draw() {
     } else if (ballY + ballSpeedY > canvas.height - BALL_RADIUS) {
       if (ballX > paddleX && ballX < paddleX + PADDLE_WIDTH) {
         ballSpeedY = -ballSpeedY;
-        // Paddle hit - double points accumulated so far
-        score += pointsSinceLastMiss * 2;
+        const normalPoints = pointsSinceLastMiss;
+        const totalPoints = pointsSinceLastMiss * 2;
+        const bonus = totalPoints - normalPoints;
+        score += totalPoints;
+        paddleBonusPoints += bonus;
         pointsSinceLastMiss = 0;
         lastHitByPaddle = true;
 
-        // Add chance for temporary ball
-        if (hasMultiballUpgrade && Math.random() < 0.5) {
-          tempBalls.push({
-            x: ballX,
-            y: ballY,
-            speedX: -ballSpeedX, // Start with opposite horizontal direction
-            speedY: ballSpeedY,
-          });
-          tempBallHits.push(0);
+        // Create sparkles at ball position
+        createSparkles(ballX, ballY);
+
+        // Add shadow ball with correct angle
+        if (hasShadowBallUpgrade) {
+          if (Math.random() < shadowBallChance) {
+            const newBallVelocity = getRandomShadowBallVelocity(); // Use new angle function
+            tempBalls.push({
+              x: ballX,
+              y: ballY,
+              speedX: newBallVelocity.x,
+              speedY: newBallVelocity.y,
+            });
+            tempBallHits.push(0);
+          }
         }
       } else {
         // Bottom wall hit - add regular points and reset
@@ -432,6 +506,82 @@ function draw() {
     // Update ball position
     ballX += ballSpeedX;
     ballY += ballSpeedY;
+
+    // Handle temporary balls
+    for (let i = tempBalls.length - 1; i >= 0; i--) {
+      // Draw shadow ball with transparency
+      ctx.beginPath();
+      ctx.arc(tempBalls[i].x, tempBalls[i].y, BALL_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(100, 100, 100, 0.2)"; // Grey with high transparency
+      ctx.fill();
+      ctx.closePath();
+
+      // Update position
+      tempBalls[i].x += tempBalls[i].speedX;
+      tempBalls[i].y += tempBalls[i].speedY;
+
+      // Wall collisions (including top wall)
+      if (
+        tempBalls[i].x + tempBalls[i].speedX > canvas.width - BALL_RADIUS ||
+        tempBalls[i].x + tempBalls[i].speedX < BALL_RADIUS
+      ) {
+        tempBalls[i].speedX = -tempBalls[i].speedX;
+      }
+      if (tempBalls[i].y + tempBalls[i].speedY < BALL_RADIUS) {
+        tempBalls[i].speedY = -tempBalls[i].speedY; // Bounce off top wall
+      }
+
+      // Check for bottom screen or paddle collision
+      if (tempBalls[i].y + tempBalls[i].speedY > canvas.height - BALL_RADIUS) {
+        if (
+          tempBalls[i].x > paddleX &&
+          tempBalls[i].x < paddleX + PADDLE_WIDTH
+        ) {
+          // Remove ball if it hits paddle
+          tempBalls.splice(i, 1);
+          tempBallHits.splice(i, 1);
+          continue;
+        } else {
+          // Remove ball if it hits bottom
+          tempBalls.splice(i, 1);
+          tempBallHits.splice(i, 1);
+          continue;
+        }
+      }
+
+      // Check for brick collisions
+      for (let c = 0; c < BRICK_COLS; c++) {
+        for (let r = 0; r < BRICK_ROWS; r++) {
+          let b = bricks[c][r];
+          if (b.status > 0) {
+            if (
+              tempBalls[i].x > b.x &&
+              tempBalls[i].x < b.x + BRICK_WIDTH &&
+              tempBalls[i].y > b.y &&
+              tempBalls[i].y < b.y + BRICK_HEIGHT
+            ) {
+              tempBalls[i].speedY = -tempBalls[i].speedY;
+              const originalStatus = b.status; // Store initial hits required
+              b.status--;
+              if (b.status === 0) {
+                pointsSinceLastMiss += originalStatus; // Points equal to hits required
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Update and draw sparkles
+    sparkles = sparkles.filter((sparkle) => {
+      const alive = sparkle.update();
+      if (alive) {
+        sparkle.draw(ctx);
+      }
+      return alive;
+    });
+
+    updateBurningBricks();
   } else {
     // If game is over, just show the game over screen and reset button
     if (score === BRICK_ROWS * BRICK_COLS) {
@@ -448,15 +598,8 @@ function draw() {
     drawResetButton();
   }
 
-  // Draw shop button
-  drawShopButton();
-
-  if (shopOpen) {
-    drawShopMenu();
-    requestAnimationFrame(draw);
-    return;
-  }
-
+  updateShopUI();
+  updateStats();
   requestAnimationFrame(draw);
 }
 
@@ -491,165 +634,179 @@ function createBrick(x, y) {
   };
 }
 
-// Add new function to draw shop button
-function drawShopButton() {
-  const x = canvas.width - SHOP_BUTTON_WIDTH - 10;
-  const y = 10;
+// Add this after the other event listeners
+document
+  .getElementById("multiballUpgrade")
+  .addEventListener("click", function () {
+    if (!hasShadowBallUpgrade && score >= SHADOW_BALL_COST) {
+      score -= SHADOW_BALL_COST;
+      hasShadowBallUpgrade = true;
+      this.textContent = "SHADOW BALL (Purchased)";
+      this.classList.add("purchased");
+    }
+  });
 
-  ctx.fillStyle = "#0095DD";
-  ctx.fillRect(x, y, SHOP_BUTTON_WIDTH, SHOP_BUTTON_HEIGHT);
-  ctx.font = "16px Arial";
-  ctx.fillStyle = "white";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("Shop", x + SHOP_BUTTON_WIDTH / 2, y + SHOP_BUTTON_HEIGHT / 2);
-}
+// Add this function to update shop UI
+function updateShopUI() {
+  const shadowBallButton = document.getElementById("multiballUpgrade");
+  const chanceUpgradeButton = document.getElementById("shadowChanceUpgrade");
 
-// Add function to draw shop menu
-function drawShopMenu() {
-  // Semi-transparent background
-  ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Update shadow ball button
+  if (hasShadowBallUpgrade) {
+    shadowBallButton.textContent = "SHADOW BALL (Purchased)";
+    shadowBallButton.classList.add("purchased");
+    chanceUpgradeButton.classList.remove("locked");
+  } else {
+    shadowBallButton.textContent = `SHADOW BALL (${SHADOW_BALL_COST} points)`;
+    if (score >= SHADOW_BALL_COST) {
+      shadowBallButton.classList.remove("disabled");
+    } else {
+      shadowBallButton.classList.add("disabled");
+    }
+    chanceUpgradeButton.classList.add("locked");
+  }
 
-  // Shop menu box
-  const menuWidth = 300;
-  const menuHeight = 400;
-  const menuX = (canvas.width - menuWidth) / 2;
-  const menuY = (canvas.height - menuHeight) / 2;
-
-  ctx.fillStyle = "white";
-  ctx.fillRect(menuX, menuY, menuWidth, menuHeight);
-
-  // Shop title
-  ctx.font = "24px Arial";
-  ctx.fillStyle = "#0095DD";
-  ctx.textAlign = "center";
-  ctx.fillText("SHOP", canvas.width / 2, menuY + 40);
-
-  // Multiball upgrade button
-  const buttonY = menuY + 100;
-  ctx.fillStyle = score >= MULTIBALL_COST ? "#0095DD" : "#999999";
-  ctx.fillRect(menuX + 20, buttonY, menuWidth - 40, 60);
-
-  ctx.font = "16px Arial";
-  ctx.fillStyle = "white";
-  ctx.textAlign = "center";
-  ctx.fillText(
-    hasMultiballUpgrade
-      ? "MULTIBALL (Purchased)"
-      : `MULTIBALL (${MULTIBALL_COST} points)`,
-    canvas.width / 2,
-    buttonY + 30
-  );
-
-  // Close button
-  ctx.fillStyle = "#0095DD";
-  ctx.fillRect(menuX + 20, menuY + menuHeight - 60, menuWidth - 40, 40);
-  ctx.fillStyle = "white";
-  ctx.fillText("Close", canvas.width / 2, menuY + menuHeight - 40);
-}
-
-// Add to click event listener
-canvas.addEventListener("click", function (e) {
-  const rect = canvas.getBoundingClientRect();
-  const clickX = e.clientX - rect.left;
-  const clickY = e.clientY - rect.top;
-
-  if (gameOver) {
-    // Existing reset button logic...
-  } else if (
-    !shopOpen &&
-    clickX > canvas.width - SHOP_BUTTON_WIDTH - 10 &&
-    clickX < canvas.width - 10 &&
-    clickY > 10 &&
-    clickY < 10 + SHOP_BUTTON_HEIGHT
-  ) {
-    // Shop button clicked
-    shopOpen = true;
-    isPaused = true;
-  } else if (shopOpen) {
-    const menuWidth = 300;
-    const menuHeight = 400;
-    const menuX = (canvas.width - menuWidth) / 2;
-    const menuY = (canvas.height - menuHeight) / 2;
-
-    // Check for multiball upgrade click
-    if (
-      clickY > menuY + 100 &&
-      clickY < menuY + 160 &&
-      clickX > menuX + 20 &&
-      clickX < menuX + menuWidth - 20
-    ) {
-      if (!hasMultiballUpgrade && score >= MULTIBALL_COST) {
-        score -= MULTIBALL_COST;
-        hasMultiballUpgrade = true;
+  // Update chance upgrade button
+  if (hasShadowBallUpgrade) {
+    if (shadowBallChance >= SHADOW_BALL_MAX_CHANCE) {
+      chanceUpgradeButton.textContent = "SHADOW CHANCE (MAX)";
+      chanceUpgradeButton.classList.add("purchased");
+    } else {
+      chanceUpgradeButton.textContent = `SHADOW CHANCE (+${
+        SHADOW_BALL_CHANCE_INCREMENT * 100
+      }%) (${SHADOW_CHANCE_UPGRADE_COST} pts)`;
+      if (score >= SHADOW_CHANCE_UPGRADE_COST) {
+        chanceUpgradeButton.classList.remove("disabled");
+      } else {
+        chanceUpgradeButton.classList.add("disabled");
       }
     }
+  } else {
+    chanceUpgradeButton.textContent = "SHADOW CHANCE (Locked)";
+  }
 
-    // Check for close button click
-    if (
-      clickY > menuY + menuHeight - 60 &&
-      clickY < menuY + menuHeight - 20 &&
-      clickX > menuX + 20 &&
-      clickX < menuX + menuWidth - 20
-    ) {
-      shopOpen = false;
-      isPaused = false;
+  // Update burn upgrade button
+  const burnButton = document.getElementById("burnUpgrade");
+  if (hasBurnUpgrade) {
+    burnButton.textContent = "BURN CHANCE (Purchased)";
+    burnButton.classList.add("purchased");
+  } else {
+    burnButton.textContent = `BURN CHANCE (${BURN_UPGRADE_COST} points)`;
+    if (score >= BURN_UPGRADE_COST) {
+      burnButton.classList.remove("disabled");
+    } else {
+      burnButton.classList.add("disabled");
     }
   }
-});
+}
 
-// Draw and update temporary balls
-for (let i = tempBalls.length - 1; i >= 0; i--) {
-  // Draw temp ball
-  ctx.beginPath();
-  ctx.arc(tempBalls[i].x, tempBalls[i].y, BALL_RADIUS, 0, Math.PI * 2);
-  ctx.fillStyle = "#FFA500"; // Orange color for temp balls
-  ctx.fill();
-  ctx.closePath();
+// Add click handler for the chance upgrade
+document
+  .getElementById("shadowChanceUpgrade")
+  .addEventListener("click", function () {
+    if (
+      hasShadowBallUpgrade &&
+      shadowBallChance < SHADOW_BALL_MAX_CHANCE &&
+      score >= SHADOW_CHANCE_UPGRADE_COST
+    ) {
+      score -= SHADOW_CHANCE_UPGRADE_COST;
+      shadowBallChance += SHADOW_BALL_CHANCE_INCREMENT;
+      shadowBallChanceLevel++;
+      updateShopUI();
+    }
+  });
 
-  // Update position
-  tempBalls[i].x += tempBalls[i].speedX;
-  tempBalls[i].y += tempBalls[i].speedY;
+// Add function to update stats display
+function updateStats() {
+  document.getElementById("bricksDestroyed").textContent = bricksDestroyed;
+  document.getElementById("currentStreak").textContent = pointsSinceLastMiss;
+  document.getElementById("paddleBonusPoints").textContent = paddleBonusPoints;
+  document.getElementById("activeShadowBalls").textContent = tempBalls.length;
 
-  // Wall collisions
-  if (
-    tempBalls[i].x + tempBalls[i].speedX > canvas.width - BALL_RADIUS ||
-    tempBalls[i].x + tempBalls[i].speedX < BALL_RADIUS
-  ) {
-    tempBalls[i].speedX = -tempBalls[i].speedX;
+  const shadowBallStats = document.getElementById("shadowBallStats");
+  if (hasShadowBallUpgrade) {
+    shadowBallStats.style.display = "block";
+    document.getElementById("shadowBallChance").textContent =
+      Math.round(shadowBallChance * 100) + "%";
+  } else {
+    shadowBallStats.style.display = "none";
   }
-  if (tempBalls[i].y + tempBalls[i].speedY < BALL_RADIUS) {
-    tempBalls[i].speedY = -tempBalls[i].speedY;
+}
+
+// Add this new class to manage individual sparkle particles
+class Sparkle {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * SPARKLE_SPEED;
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+    this.life = SPARKLE_LIFETIME;
+    this.maxLife = SPARKLE_LIFETIME;
   }
 
-  // Check for brick collisions
-  for (let c = 0; c < BRICK_COLS; c++) {
-    for (let r = 0; r < BRICK_ROWS; r++) {
-      let b = bricks[c][r];
-      if (b.status > 0) {
-        if (
-          tempBalls[i].x > b.x &&
-          tempBalls[i].x < b.x + BRICK_WIDTH &&
-          tempBalls[i].y > b.y &&
-          tempBalls[i].y < b.y + BRICK_HEIGHT
-        ) {
-          tempBalls[i].speedY = -tempBalls[i].speedY;
-          b.status--;
-          tempBallHits[i]++;
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.life--;
+    return this.life > 0;
+  }
 
-          if (b.status === 0) {
-            pointsSinceLastMiss++;
-          }
+  draw(ctx) {
+    const opacity = this.life / this.maxLife;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+    ctx.fill();
+    ctx.closePath();
+  }
+}
 
-          // Remove ball if it has hit enough bricks
-          if (tempBallHits[i] >= TEMP_BALL_HITS) {
-            tempBalls.splice(i, 1);
-            tempBallHits.splice(i, 1);
-            break;
-          }
+// Add this function to create sparkles
+function createSparkles(x, y) {
+  for (let i = 0; i < SPARKLE_COUNT; i++) {
+    sparkles.push(new Sparkle(x, y));
+  }
+}
+
+// Add new function to handle burn effect
+function updateBurningBricks() {
+  for (const [key, brick] of burningBricks.entries()) {
+    brick.burnTimer++;
+
+    // Apply damage every BURN_DAMAGE_INTERVAL frames
+    if (brick.burnTimer % BURN_DAMAGE_INTERVAL === 0) {
+      // Get the actual brick from the game state
+      const [col, row] = key.split(",").map(Number);
+      if (bricks[col][row].status > 0) {
+        bricks[col][row].status--;
+
+        // If brick is destroyed by burn
+        if (bricks[col][row].status === 0) {
+          pointsSinceLastMiss++;
+          bricksDestroyed++;
+          burningBricks.delete(key);
         }
       }
     }
+
+    // Remove burn effect after duration or if brick is gone
+    if (
+      brick.burnTimer >= BURN_DURATION ||
+      bricks[key.split(",")[0]][key.split(",")[1]].status === 0
+    ) {
+      burningBricks.delete(key);
+    }
   }
 }
+
+// Add burn upgrade button handler
+document.getElementById("burnUpgrade").addEventListener("click", function () {
+  if (!hasBurnUpgrade && score >= BURN_UPGRADE_COST) {
+    score -= BURN_UPGRADE_COST;
+    hasBurnUpgrade = true;
+    this.textContent = "BURN CHANCE (Purchased)";
+    this.classList.add("purchased");
+  }
+});

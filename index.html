@@ -3,15 +3,126 @@
 <head>
     <title>Breakout Game</title>
     <style>
+        .game-container {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            padding: 20px;
+        }
+        
         canvas {
             border: 2px solid black;
-            display: block;
-            margin: 0 auto;
+        }
+        
+        .shop-panel {
+            width: 300px;
+            background: white;
+            border: 2px solid #0095DD;
+            padding: 20px;
+        }
+        
+        .shop-title {
+            color: #0095DD;
+            font-size: 24px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .shop-item {
+            background: #0095DD;
+            color: white;
+            padding: 15px;
+            margin: 10px 0;
+            text-align: center;
+            cursor: pointer;
+        }
+        
+        .shop-item.disabled {
+            background: #999999;
+            cursor: not-allowed;
+        }
+        
+        .shop-item.purchased {
+            background: #4CAF50;
+        }
+        
+        .shop-item.locked {
+            background: #666666;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        
+        .stats-panel {
+            width: 200px;
+            background: white;
+            border: 2px solid #0095DD;
+            padding: 20px;
+        }
+        
+        .stats-title {
+            color: #0095DD;
+            font-size: 24px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .stat-item {
+            margin: 10px 0;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .stat-value {
+            color: #0095DD;
+            font-size: 18px;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div class="game-container">
+        <div class="stats-panel">
+            <div class="stats-title">STATS</div>
+            <div class="stat-item">
+                <div class="stat-label">Bricks Destroyed</div>
+                <div id="bricksDestroyed" class="stat-value">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Current Streak</div>
+                <div id="currentStreak" class="stat-value">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Paddle Bonus Points</div>
+                <div id="paddleBonusPoints" class="stat-value">0</div>
+            </div>
+            <div id="shadowBallStats" class="stat-item" style="display: none;">
+                <div class="stat-label">Shadow Ball Chance</div>
+                <div id="shadowBallChance" class="stat-value">0%</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Active Shadow Balls</div>
+                <div id="activeShadowBalls" class="stat-value">0</div>
+            </div>
+        </div>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div class="shop-panel">
+            <div class="shop-title">SHOP</div>
+            <div id="multiballUpgrade" class="shop-item">
+                SHADOW BALL (50 points)
+            </div>
+            <div id="shadowChanceUpgrade" class="shop-item disabled">
+                SHADOW CHANCE (30 points)
+            </div>
+            <div id="burnUpgrade" class="shop-item">
+                BURN CHANCE (75 points)
+            </div>
+        </div>
+    </div>
     <script src="game.js"></script>
 </body>
 </html> 
