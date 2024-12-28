@@ -15,8 +15,6 @@ const SPEED_INCREMENT = 0.0005;
 const PADDLE_SPEED = 4; // Reduced from 6 for more precise control
 const PADDLE_ACCELERATION = 0.4; // Reduced from 0.8 for gentler acceleration
 const PADDLE_FRICTION = 0.9; // Increased from 0.85 for smoother deceleration
-const MIN_NEW_BRICKS = 20; // Minimum number of bricks to add in new wave
-const MAX_NEW_BRICKS = 40; // Maximum number of bricks to add in new wave
 const BRICK_COLORS = {
   NORMAL: "#0095DD",
   STRONG: "#800080", // Purple
@@ -34,7 +32,10 @@ const SPARKLE_COUNT = 10; // Number of particles per hit
 const SPARKLE_SPEED = 3; // Base speed of particles
 const SPARKLE_LIFETIME = 30; // How many frames the sparkles last
 const BURN_UPGRADE_COST = 75;
-const BURN_CHANCE = 0.15; // 15% chance to burn
+const BURN_CHANCE_BASE = 0.05; // 5% initial chance
+const BURN_CHANCE_INCREMENT = 0.05; // 5% per upgrade
+const BURN_CHANCE_MAX = 0.3; // 30% maximum chance
+const BURN_CHANCE_UPGRADE_COST = 30; // Cost for each chance increase
 
 const BURN_DAMAGE_INTERVAL = 60; // 1 damage per second (60 frames)
 const BURN_DURATION = 120; // 2 seconds (120 frames)
@@ -69,6 +70,8 @@ let paddleBonusPoints = 0;
 let sparkles = []; // Array to hold active sparkle particles
 let hasBurnUpgrade = false;
 let burningBricks = new Map(); // Map to track burning bricks with their timers
+let burnChance = BURN_CHANCE_BASE;
+let burnChanceLevel = 0;
 
 // Create bricks array
 let bricks = [];
@@ -127,37 +130,15 @@ function doesBrickOverlap(x, y, existingBricks) {
 
 // Add this function to generate new bricks
 function addNewBricks() {
-  // Determine random number of new bricks to add
-  const numNewBricks =
-    Math.floor(Math.random() * (MAX_NEW_BRICKS - MIN_NEW_BRICKS + 1)) +
-    MIN_NEW_BRICKS;
-
-  let bricksAdded = 0;
-  let attempts = 0;
-  const maxAttempts = 100; // Prevent infinite loops
-
-  while (bricksAdded < numNewBricks && attempts < maxAttempts) {
-    // Generate random position
-    const col = Math.floor(Math.random() * BRICK_COLS);
-    const row = Math.floor(Math.random() * BRICK_ROWS);
-
-    // Calculate actual position
-    const brickX = col * (BRICK_WIDTH + BRICK_PADDING) + BRICK_OFFSET_LEFT;
-    const brickY = row * (BRICK_HEIGHT + BRICK_PADDING) + BRICK_OFFSET_TOP;
-
-    // Check if position is empty and doesn't overlap
-    if (
-      bricks[col][row].status === 0 &&
-      !doesBrickOverlap(brickX, brickY, bricks)
-    ) {
-      bricks[col][row] = createBrick(brickX, brickY);
-      bricksAdded++;
+  // Fill all positions with new bricks
+  for (let c = 0; c < BRICK_COLS; c++) {
+    for (let r = 0; r < BRICK_ROWS; r++) {
+      const brickX = c * (BRICK_WIDTH + BRICK_PADDING) + BRICK_OFFSET_LEFT;
+      const brickY = r * (BRICK_HEIGHT + BRICK_PADDING) + BRICK_OFFSET_TOP;
+      bricks[c][r] = createBrick(brickX, brickY);
     }
-
-    attempts++;
   }
-
-  return bricksAdded > 0;
+  return true; // Always return true since we always add bricks
 }
 
 // Add function to check if all bricks are cleared
@@ -189,7 +170,7 @@ function collisionDetection() {
           b.status--;
 
           // Apply burn effect
-          if (hasBurnUpgrade && Math.random() < BURN_CHANCE) {
+          if (hasBurnUpgrade && Math.random() < burnChance) {
             const brickKey = `${c},${r}`;
             if (!burningBricks.has(brickKey) && b.status > 0) {
               burningBricks.set(brickKey, {
@@ -356,6 +337,8 @@ function resetGame() {
   sparkles = [];
   hasBurnUpgrade = false;
   burningBricks.clear();
+  burnChance = BURN_CHANCE_BASE;
+  burnChanceLevel = 0;
 }
 
 // Add click event listener after the other event listeners
@@ -648,14 +631,14 @@ document
 
 // Add this function to update shop UI
 function updateShopUI() {
+  // Shadow upgrades
   const shadowBallButton = document.getElementById("multiballUpgrade");
-  const chanceUpgradeButton = document.getElementById("shadowChanceUpgrade");
+  const shadowChanceButton = document.getElementById("shadowChanceUpgrade");
 
-  // Update shadow ball button
   if (hasShadowBallUpgrade) {
     shadowBallButton.textContent = "SHADOW BALL (Purchased)";
     shadowBallButton.classList.add("purchased");
-    chanceUpgradeButton.classList.remove("locked");
+    shadowChanceButton.classList.remove("locked");
   } else {
     shadowBallButton.textContent = `SHADOW BALL (${SHADOW_BALL_COST} points)`;
     if (score >= SHADOW_BALL_COST) {
@@ -663,33 +646,36 @@ function updateShopUI() {
     } else {
       shadowBallButton.classList.add("disabled");
     }
-    chanceUpgradeButton.classList.add("locked");
+    shadowChanceButton.classList.add("locked");
   }
 
-  // Update chance upgrade button
+  // Update shadow chance upgrade button
   if (hasShadowBallUpgrade) {
     if (shadowBallChance >= SHADOW_BALL_MAX_CHANCE) {
-      chanceUpgradeButton.textContent = "SHADOW CHANCE (MAX)";
-      chanceUpgradeButton.classList.add("purchased");
+      shadowChanceButton.textContent = "SHADOW CHANCE (MAX)";
+      shadowChanceButton.classList.add("purchased");
     } else {
-      chanceUpgradeButton.textContent = `SHADOW CHANCE (+${
+      shadowChanceButton.textContent = `SHADOW CHANCE (+${
         SHADOW_BALL_CHANCE_INCREMENT * 100
       }%) (${SHADOW_CHANCE_UPGRADE_COST} pts)`;
       if (score >= SHADOW_CHANCE_UPGRADE_COST) {
-        chanceUpgradeButton.classList.remove("disabled");
+        shadowChanceButton.classList.remove("disabled");
       } else {
-        chanceUpgradeButton.classList.add("disabled");
+        shadowChanceButton.classList.add("disabled");
       }
     }
   } else {
-    chanceUpgradeButton.textContent = "SHADOW CHANCE (Locked)";
+    shadowChanceButton.textContent = "SHADOW CHANCE (Locked)";
   }
 
-  // Update burn upgrade button
+  // Fire upgrades
   const burnButton = document.getElementById("burnUpgrade");
+  const burnChanceButton = document.getElementById("burnChanceUpgrade");
+
   if (hasBurnUpgrade) {
     burnButton.textContent = "BURN CHANCE (Purchased)";
     burnButton.classList.add("purchased");
+    burnChanceButton.classList.remove("locked");
   } else {
     burnButton.textContent = `BURN CHANCE (${BURN_UPGRADE_COST} points)`;
     if (score >= BURN_UPGRADE_COST) {
@@ -697,6 +683,26 @@ function updateShopUI() {
     } else {
       burnButton.classList.add("disabled");
     }
+    burnChanceButton.classList.add("locked");
+  }
+
+  // Update burn chance upgrade button
+  if (hasBurnUpgrade) {
+    if (burnChance >= BURN_CHANCE_MAX) {
+      burnChanceButton.textContent = "BURN CHANCE (MAX)";
+      burnChanceButton.classList.add("purchased");
+    } else {
+      burnChanceButton.textContent = `BURN CHANCE (+${
+        BURN_CHANCE_INCREMENT * 100
+      }%) (${BURN_CHANCE_UPGRADE_COST} pts)`;
+      if (score >= BURN_CHANCE_UPGRADE_COST) {
+        burnChanceButton.classList.remove("disabled");
+      } else {
+        burnChanceButton.classList.add("disabled");
+      }
+    }
+  } else {
+    burnChanceButton.textContent = "BURN CHANCE (Locked)";
   }
 }
 
@@ -730,6 +736,16 @@ function updateStats() {
       Math.round(shadowBallChance * 100) + "%";
   } else {
     shadowBallStats.style.display = "none";
+  }
+
+  // Add burn chance to stats if upgrade is purchased
+  const burnStats = document.getElementById("burnStats");
+  if (hasBurnUpgrade) {
+    burnStats.style.display = "block";
+    document.getElementById("burnChance").textContent =
+      Math.round(burnChance * 100) + "%";
+  } else {
+    burnStats.style.display = "none";
   }
 }
 
@@ -809,4 +825,42 @@ document.getElementById("burnUpgrade").addEventListener("click", function () {
     this.textContent = "BURN CHANCE (Purchased)";
     this.classList.add("purchased");
   }
+});
+
+// Add click handler for burn chance upgrade
+document
+  .getElementById("burnChanceUpgrade")
+  .addEventListener("click", function () {
+    if (
+      hasBurnUpgrade &&
+      burnChance < BURN_CHANCE_MAX &&
+      score >= BURN_CHANCE_UPGRADE_COST
+    ) {
+      score -= BURN_CHANCE_UPGRADE_COST;
+      burnChance += BURN_CHANCE_INCREMENT;
+      burnChanceLevel++;
+      updateShopUI();
+    }
+  });
+
+// Add after other event listeners
+document.querySelectorAll(".tab").forEach((tab) => {
+  tab.addEventListener("click", function () {
+    // Remove active class from all tabs
+    document
+      .querySelectorAll(".tab")
+      .forEach((t) => t.classList.remove("active"));
+
+    // Add active class to clicked tab
+    this.classList.add("active");
+
+    // Hide all tab content
+    document.querySelectorAll(".tab-content").forEach((content) => {
+      content.style.display = "none";
+    });
+
+    // Show selected tab content
+    const tabId = this.getAttribute("data-tab") + "Tab";
+    document.getElementById(tabId).style.display = "block";
+  });
 });

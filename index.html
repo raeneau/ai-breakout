@@ -82,6 +82,33 @@
             font-size: 18px;
             font-weight: bold;
         }
+        
+        .shop-tabs {
+            display: flex;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #0095DD;
+        }
+        
+        .tab {
+            padding: 8px 15px;
+            cursor: pointer;
+            color: #666;
+            border-radius: 4px 4px 0 0;
+            margin-right: 5px;
+        }
+        
+        .tab:hover {
+            background: #e0e0e0;
+        }
+        
+        .tab.active {
+            background: #0095DD;
+            color: white;
+        }
+        
+        .tab-content {
+            transition: opacity 0.3s ease;
+        }
     </style>
 </head>
 <body>
@@ -108,18 +135,33 @@
                 <div class="stat-label">Active Shadow Balls</div>
                 <div id="activeShadowBalls" class="stat-value">0</div>
             </div>
+            <div id="burnStats" class="stat-item" style="display: none;">
+                <div class="stat-label">Burn Chance</div>
+                <div id="burnChance" class="stat-value">0%</div>
+            </div>
         </div>
         <canvas id="gameCanvas" width="800" height="600"></canvas>
         <div class="shop-panel">
             <div class="shop-title">SHOP</div>
-            <div id="multiballUpgrade" class="shop-item">
-                SHADOW BALL (50 points)
+            <div class="shop-tabs">
+                <div class="tab active" data-tab="shadow">Shadow</div>
+                <div class="tab" data-tab="fire">Fire</div>
             </div>
-            <div id="shadowChanceUpgrade" class="shop-item disabled">
-                SHADOW CHANCE (30 points)
+            <div class="tab-content" id="shadowTab">
+                <div id="multiballUpgrade" class="shop-item">
+                    SHADOW BALL (50 points)
+                </div>
+                <div id="shadowChanceUpgrade" class="shop-item disabled">
+                    SHADOW CHANCE (30 points)
+                </div>
             </div>
-            <div id="burnUpgrade" class="shop-item">
-                BURN CHANCE (75 points)
+            <div class="tab-content" id="fireTab" style="display: none;">
+                <div id="burnUpgrade" class="shop-item">
+                    BURN CHANCE (75 points)
+                </div>
+                <div id="burnChanceUpgrade" class="shop-item disabled">
+                    BURN CHANCE (30 points)
+                </div>
             </div>
         </div>
     </div>
