@@ -1,38 +1,49 @@
+import {
+  PADDLE_WIDTH,
+  PADDLE_HEIGHT,
+  BALL_RADIUS,
+  BRICK_ROWS,
+  BRICK_COLS,
+  BRICK_WIDTH,
+  BRICK_HEIGHT,
+  BRICK_PADDING,
+  BRICK_OFFSET_TOP,
+  BRICK_OFFSET_LEFT,
+  INITIAL_BALL_SPEED,
+  MAX_BALL_SPEED,
+  SPEED_INCREMENT,
+  PADDLE_SPEED,
+  PADDLE_ACCELERATION,
+  PADDLE_FRICTION,
+  BRICK_COLORS,
+  STRONG_BRICK_HITS,
+  SUPER_BRICK_HITS,
+  SPARKLE_COUNT,
+  SPARKLE_SPEED,
+  SPARKLE_LIFETIME,
+  BURN_DAMAGE_INTERVAL,
+  BURN_DURATION,
+  RIPPLE_DURATION,
+  RIPPLE_MAX_RADIUS,
+  RIPPLE_START_RADIUS,
+  SPLASH_DAMAGE_CHANCE,
+  PADDLE_GLOW_DURATION,
+  PADDLE_COLOR,
+  PADDLE_HIT_COLOR,
+  PADDLE_FADE_DURATION,
+  MAX_BALL_ANGLE,
+  PADDLE_INFLUENCE,
+  GOLD_BRICK_HITS,
+  GOLD_BRICK_POINTS,
+  GOLD_BRICK_CHANCE,
+  GOLD_PULSE_DURATION,
+  GOLD_PULSE_MIN_BRIGHTNESS,
+  GOLD_PULSE_MAX_BRIGHTNESS,
+} from "./constants.js";
+
 // First, declare all canvas-related variables
 let canvas, ctx;
 let ballX, ballY, ballSpeedX, ballSpeedY, paddleX;
-
-// Game constants
-const PADDLE_WIDTH = 100;
-const PADDLE_HEIGHT = 20;
-const BALL_RADIUS = 10;
-const BRICK_ROWS = 5;
-const BRICK_COLS = 8;
-const BRICK_WIDTH = 80;
-const BRICK_HEIGHT = 20;
-const BRICK_PADDING = 10;
-const BRICK_OFFSET_TOP = 50;
-const BRICK_OFFSET_LEFT = 35;
-const INITIAL_BALL_SPEED = 3;
-const MAX_BALL_SPEED = 5;
-const SPEED_INCREMENT = 0.0005;
-const PADDLE_SPEED = 4; // Reduced from 6 for more precise control
-const PADDLE_ACCELERATION = 0.4; // Reduced from 0.8 for gentler acceleration
-const PADDLE_FRICTION = 0.9; // Increased from 0.85 for smoother deceleration
-const BRICK_COLORS = {
-  NORMAL: "#0095DD",
-  STRONG: "#800080", // Purple
-  SUPER: "#FFA500", // Orange
-};
-const STRONG_BRICK_HITS = 3;
-const SUPER_BRICK_HITS = 5;
-const TEMP_BALL_HITS = 5;
-const SPARKLE_COUNT = 10; // Number of particles per hit
-const SPARKLE_SPEED = 3; // Base speed of particles
-const SPARKLE_LIFETIME = 30; // How many frames the sparkles last
-
-const BURN_DAMAGE_INTERVAL = 60; // 1 damage per second (60 frames)
-const BURN_DURATION = 120; // 2 seconds (120 frames)
 
 // Initialize game state variables that don't depend on canvas
 let rightPressed = false;
@@ -54,6 +65,8 @@ let currentRound = 1;
 let tempBalls = [];
 let tempBallHits = [];
 let bricks = [];
+let ripples = [];
+let paddleGlowTime = 0;
 
 // Add key handler functions
 function keyDownHandler(e) {
@@ -231,6 +244,50 @@ function areBricksCleared() {
   return true;
 }
 
+// Add this helper function to apply splash damage
+function applySplashDamage(col, row) {
+  // Create ripple effect at the center of the brick
+  const brickX =
+    col * (BRICK_WIDTH + BRICK_PADDING) + BRICK_OFFSET_LEFT + BRICK_WIDTH / 2;
+  const brickY =
+    row * (BRICK_HEIGHT + BRICK_PADDING) + BRICK_OFFSET_TOP + BRICK_HEIGHT / 2;
+  ripples.push(new Ripple(brickX, brickY));
+
+  // Define the four adjacent directions (up, right, down, left)
+  const directions = [
+    [0, -1], // up
+    [1, 0], // right
+    [0, 1], // down
+    [-1, 0], // left
+  ];
+
+  // Check each adjacent brick
+  for (const [dc, dr] of directions) {
+    const newCol = col + dc;
+    const newRow = row + dr;
+
+    // Check if the adjacent position is within bounds
+    if (
+      newCol >= 0 &&
+      newCol < BRICK_COLS &&
+      newRow >= 0 &&
+      newRow < BRICK_ROWS
+    ) {
+      // If there's a brick and it's not already destroyed
+      if (bricks[newCol][newRow].status > 0) {
+        const originalStatus = bricks[newCol][newRow].status;
+        bricks[newCol][newRow].status--;
+
+        if (bricks[newCol][newRow].status === 0) {
+          pointsSinceLastMiss += originalStatus;
+          bricksDestroyed++;
+          burningBricks.delete(`${newCol},${newRow}`);
+        }
+      }
+    }
+  }
+}
+
 // Collision detection
 function collisionDetection() {
   for (let c = 0; c < BRICK_COLS; c++) {
@@ -247,6 +304,11 @@ function collisionDetection() {
           const originalStatus = b.status;
           b.status--;
 
+          // Apply splash damage if upgrade is purchased and chance roll succeeds
+          if (hasSplashUpgrade && Math.random() < SPLASH_DAMAGE_CHANCE) {
+            applySplashDamage(c, r);
+          }
+
           // Apply burn effect
           if (hasBurnUpgrade && Math.random() < burnChance) {
             const brickKey = `${c},${r}`;
@@ -259,15 +321,19 @@ function collisionDetection() {
           }
 
           if (b.status === 0) {
-            pointsSinceLastMiss += originalStatus;
+            // Add special scoring for gold bricks
+            if (b.isGold) {
+              pointsSinceLastMiss += GOLD_BRICK_POINTS;
+            } else {
+              pointsSinceLastMiss += originalStatus;
+            }
             bricksDestroyed++;
             burningBricks.delete(`${c},${r}`);
           }
+
           // Check if all bricks are cleared
           if (areBricksCleared()) {
-            // Try to add new bricks
             if (!addNewBricks()) {
-              // If we couldn't add new bricks, end the game as win
               gameOver = true;
               window.score += lastHitByPaddle
                 ? pointsSinceLastMiss * 2
@@ -298,12 +364,54 @@ function drawBall() {
 function drawPaddle() {
   ctx.beginPath();
   ctx.rect(paddleX, canvas.height - PADDLE_HEIGHT, PADDLE_WIDTH, PADDLE_HEIGHT);
-  ctx.fillStyle = "#0095DD";
+
+  // Calculate the color based on fade time
+  if (paddleGlowTime > 0) {
+    // Interpolate between hit color and normal color
+    const progress = paddleGlowTime / PADDLE_FADE_DURATION;
+    const r1 = parseInt(PADDLE_HIT_COLOR.slice(1, 3), 16);
+    const g1 = parseInt(PADDLE_HIT_COLOR.slice(3, 5), 16);
+    const b1 = parseInt(PADDLE_HIT_COLOR.slice(5, 7), 16);
+    const r2 = parseInt(PADDLE_COLOR.slice(1, 3), 16);
+    const g2 = parseInt(PADDLE_COLOR.slice(3, 5), 16);
+    const b2 = parseInt(PADDLE_COLOR.slice(5, 7), 16);
+
+    const r = Math.round(r2 + (r1 - r2) * progress);
+    const g = Math.round(g2 + (g1 - g2) * progress);
+    const b = Math.round(b2 + (b1 - b2) * progress);
+
+    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+    paddleGlowTime--;
+  } else {
+    ctx.fillStyle = PADDLE_COLOR;
+  }
+
   ctx.fill();
   ctx.closePath();
 }
 
+// Add this helper function to adjust color brightness
+function adjustBrightness(hexColor, factor) {
+  // Convert hex to RGB
+  const r = parseInt(hexColor.slice(1, 3), 16);
+  const g = parseInt(hexColor.slice(3, 5), 16);
+  const b = parseInt(hexColor.slice(5, 7), 16);
+
+  // Adjust brightness
+  const adjustedR = Math.min(255, Math.round(r * factor));
+  const adjustedG = Math.min(255, Math.round(g * factor));
+  const adjustedB = Math.min(255, Math.round(b * factor));
+
+  // Convert back to hex
+  return `#${adjustedR.toString(16).padStart(2, "0")}${adjustedG
+    .toString(16)
+    .padStart(2, "0")}${adjustedB.toString(16).padStart(2, "0")}`;
+}
+
 function drawBricks() {
+  // Get the current frame count for pulsing
+  const frameCount = performance.now() / (1000 / 60); // Approximate frame count
+
   for (let c = 0; c < BRICK_COLS; c++) {
     for (let r = 0; r < BRICK_ROWS; r++) {
       if (bricks[c][r].status > 0) {
@@ -316,7 +424,17 @@ function drawBricks() {
         ctx.rect(brickX, brickY, BRICK_WIDTH, BRICK_HEIGHT);
 
         // Color based on remaining hits
-        if (bricks[c][r].status === SUPER_BRICK_HITS) {
+        if (bricks[c][r].isGold) {
+          // Calculate pulse factor using sine wave
+          const pulseProgress =
+            (frameCount % GOLD_PULSE_DURATION) / GOLD_PULSE_DURATION;
+          const pulseFactor =
+            GOLD_PULSE_MIN_BRIGHTNESS +
+            ((Math.sin(pulseProgress * Math.PI * 2) + 1) / 2) *
+              (GOLD_PULSE_MAX_BRIGHTNESS - GOLD_PULSE_MIN_BRIGHTNESS);
+
+          ctx.fillStyle = adjustBrightness(BRICK_COLORS.GOLD, pulseFactor);
+        } else if (bricks[c][r].status === SUPER_BRICK_HITS) {
           ctx.fillStyle = BRICK_COLORS.SUPER;
         } else if (bricks[c][r].status === STRONG_BRICK_HITS) {
           ctx.fillStyle = BRICK_COLORS.STRONG;
@@ -415,6 +533,8 @@ function resetGame() {
   burnChanceLevel = 0;
   resetShop();
   currentRound = 1;
+  ripples = [];
+  paddleGlowTime = 0;
 }
 
 // Add the click handler function
@@ -490,7 +610,27 @@ export function draw() {
       ballSpeedY = -ballSpeedY;
     } else if (ballY + ballSpeedY > canvas.height - BALL_RADIUS) {
       if (ballX > paddleX && ballX < paddleX + PADDLE_WIDTH) {
-        ballSpeedY = -ballSpeedY;
+        // Calculate where on the paddle the ball hit (0 = left edge, 1 = right edge)
+        const relativeIntersectX = (ballX - paddleX) / PADDLE_WIDTH;
+
+        // Convert to an angle between -MAX_BALL_ANGLE and MAX_BALL_ANGLE
+        const bounceAngle = (relativeIntersectX * 2 - 1) * MAX_BALL_ANGLE;
+
+        // Calculate new ball velocity
+        const speed = Math.sqrt(
+          ballSpeedX * ballSpeedX + ballSpeedY * ballSpeedY
+        );
+
+        // Add paddle velocity influence to the angle
+        const paddleInfluence =
+          (paddleVelocity / PADDLE_SPEED) * PADDLE_INFLUENCE;
+        const finalAngle = bounceAngle + paddleInfluence;
+
+        // Set new ball velocity
+        ballSpeedX = speed * Math.sin(finalAngle);
+        ballSpeedY = -speed * Math.cos(finalAngle); // Negative because y increases downward
+
+        // Rest of the collision code (points, effects, etc.)
         const normalPoints = pointsSinceLastMiss;
         const totalPoints = pointsSinceLastMiss * 2;
         const bonus = totalPoints - normalPoints;
@@ -499,22 +639,10 @@ export function draw() {
         pointsSinceLastMiss = 0;
         lastHitByPaddle = true;
 
-        // Create sparkles at ball position
+        paddleGlowTime = PADDLE_GLOW_DURATION;
         createSparkles(ballX, ballY);
 
-        // Add shadow ball with correct angle
-        if (hasShadowBallUpgrade) {
-          if (Math.random() < shadowBallChance) {
-            const newBallVelocity = getRandomShadowBallVelocity(); // Use new angle function
-            tempBalls.push({
-              x: ballX,
-              y: ballY,
-              speedX: newBallVelocity.x,
-              speedY: newBallVelocity.y,
-            });
-            tempBallHits.push(0);
-          }
-        }
+        // Shadow ball spawning code...
       } else {
         // Bottom wall hit - add regular points and reset
         window.score += pointsSinceLastMiss;
@@ -620,10 +748,28 @@ export function draw() {
               tempBalls[i].y < b.y + BRICK_HEIGHT
             ) {
               tempBalls[i].speedY = -tempBalls[i].speedY;
-              const originalStatus = b.status; // Store initial hits required
+              const originalStatus = b.status;
               b.status--;
               if (b.status === 0) {
-                pointsSinceLastMiss += originalStatus; // Points equal to hits required
+                pointsSinceLastMiss += originalStatus;
+                bricksDestroyed++;
+                burningBricks.delete(`${c},${r}`);
+              }
+
+              // Add this section to check for cleared bricks
+              if (areBricksCleared()) {
+                if (!addNewBricks()) {
+                  gameOver = true;
+                  window.score += lastHitByPaddle
+                    ? pointsSinceLastMiss * 2
+                    : pointsSinceLastMiss;
+                  ctx.font = "32px Arial";
+                  ctx.fillStyle = "#0095DD";
+                  ctx.textAlign = "center";
+                  ctx.fillText("YOU WIN!", canvas.width / 2, canvas.height / 2);
+                  drawResetButton();
+                  return;
+                }
               }
             }
           }
@@ -641,6 +787,15 @@ export function draw() {
     });
 
     updateBurningBricks();
+
+    // Update and draw ripples
+    ripples = ripples.filter((ripple) => {
+      const alive = ripple.update();
+      if (alive) {
+        ripple.draw(ctx);
+      }
+      return alive;
+    });
   } else {
     // If game is over, just show the game over screen and reset button
     if (window.score === BRICK_ROWS * BRICK_COLS) {
@@ -676,18 +831,32 @@ function getRandomStartAngle() {
 function createBrick(x, y) {
   const random = Math.random();
   let status;
-  if (random < superBrickChance) {
-    status = SUPER_BRICK_HITS;
-  } else if (random < superBrickChance + strongBrickChance) {
-    status = STRONG_BRICK_HITS;
+
+  if (random < GOLD_BRICK_CHANCE) {
+    status = GOLD_BRICK_HITS;
+    return {
+      x: x,
+      y: y,
+      status: status,
+      isGold: true,
+    };
   } else {
-    status = 1;
+    // Recalculate random chance for remaining brick types
+    const remainingRandom = Math.random();
+    if (remainingRandom < superBrickChance) {
+      status = SUPER_BRICK_HITS;
+    } else if (remainingRandom < superBrickChance + strongBrickChance) {
+      status = STRONG_BRICK_HITS;
+    } else {
+      status = 1;
+    }
+    return {
+      x: x,
+      y: y,
+      status: status,
+      isGold: false,
+    };
   }
-  return {
-    x: x,
-    y: y,
-    status: status,
-  };
 }
 
 // Add this function to update shop UI
@@ -783,7 +952,6 @@ function updateStats() {
     shadowBallStats.style.display = "none";
   }
 
-  // Add burn chance to stats if upgrade is purchased
   const burnStats = document.getElementById("burnStats");
   if (hasBurnUpgrade) {
     burnStats.style.display = "block";
@@ -791,6 +959,16 @@ function updateStats() {
       Math.round(burnChance * 100) + "%";
   } else {
     burnStats.style.display = "none";
+  }
+
+  // Add splash damage stats
+  const splashStats = document.getElementById("splashStats");
+  if (hasSplashUpgrade) {
+    splashStats.style.display = "block";
+    document.getElementById("splashChance").textContent =
+      Math.round(SPLASH_DAMAGE_CHANCE * 100) + "%";
+  } else {
+    splashStats.style.display = "none";
   }
 }
 
@@ -859,5 +1037,37 @@ function updateBurningBricks() {
     ) {
       burningBricks.delete(key);
     }
+  }
+}
+
+// Add this new class to manage ripple effects
+class Ripple {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.life = RIPPLE_DURATION;
+    this.maxLife = RIPPLE_DURATION;
+    this.startRadius = RIPPLE_START_RADIUS;
+  }
+
+  update() {
+    this.life--;
+    return this.life > 0;
+  }
+
+  draw(ctx) {
+    const progress = this.life / this.maxLife;
+    // Use easeOut function to make the expansion smoother and slower at the end
+    const easeOut = 1 - Math.pow(progress, 2);
+    const radius =
+      this.startRadius + (RIPPLE_MAX_RADIUS - this.startRadius) * easeOut;
+    const opacity = progress * 0.7; // Increased from 0.5 to 0.7 for better visibility
+
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(0, 149, 221, ${opacity})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.closePath();
   }
 }

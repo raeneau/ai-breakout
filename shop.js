@@ -1,20 +1,34 @@
+import {
+  SHADOW_BALL_COST,
+  SHADOW_BALL_BASE_CHANCE,
+  SHADOW_BALL_CHANCE_INCREMENT,
+  SHADOW_BALL_MAX_CHANCE,
+  SHADOW_CHANCE_UPGRADE_COST,
+  BURN_UPGRADE_COST,
+  BURN_CHANCE_BASE,
+  BURN_CHANCE_INCREMENT,
+  BURN_CHANCE_MAX,
+  BURN_CHANCE_UPGRADE_COST,
+  SPLASH_UPGRADE_COST,
+  SPLASH_DAMAGE_CHANCE,
+} from "./constants.js";
+
 // Make shop variables global by attaching to window
-// window.SHADOW_BALL_COST = 50;
-window.SHADOW_BALL_COST = 0;
-window.SHADOW_BALL_BASE_CHANCE = 0.05;
-window.SHADOW_BALL_CHANCE_INCREMENT = 0.05;
-window.SHADOW_BALL_MAX_CHANCE = 0.3;
-// window.SHADOW_CHANCE_UPGRADE_COST = 30;
-window.SHADOW_CHANCE_UPGRADE_COST = 0;
+window.SHADOW_BALL_COST = SHADOW_BALL_COST;
+window.SHADOW_BALL_BASE_CHANCE = SHADOW_BALL_BASE_CHANCE;
+window.SHADOW_BALL_CHANCE_INCREMENT = SHADOW_BALL_CHANCE_INCREMENT;
+window.SHADOW_BALL_MAX_CHANCE = SHADOW_BALL_MAX_CHANCE;
+window.SHADOW_CHANCE_UPGRADE_COST = SHADOW_CHANCE_UPGRADE_COST;
 
-// window.BURN_UPGRADE_COST = 75;
-window.BURN_UPGRADE_COST = 0;
+window.BURN_UPGRADE_COST = BURN_UPGRADE_COST;
+window.BURN_CHANCE_BASE = BURN_CHANCE_BASE;
+window.BURN_CHANCE_INCREMENT = BURN_CHANCE_INCREMENT;
+window.BURN_CHANCE_MAX = BURN_CHANCE_MAX;
+window.BURN_CHANCE_UPGRADE_COST = BURN_CHANCE_UPGRADE_COST;
 
-window.BURN_CHANCE_BASE = 0.05;
-window.BURN_CHANCE_INCREMENT = 0.05;
-window.BURN_CHANCE_MAX = 0.3;
-// window.BURN_CHANCE_UPGRADE_COST = 30;
-window.BURN_CHANCE_UPGRADE_COST = 0;
+window.SPLASH_UPGRADE_COST = SPLASH_UPGRADE_COST;
+window.SPLASH_DAMAGE_CHANCE = SPLASH_DAMAGE_CHANCE;
+window.hasSplashUpgrade = false;
 
 // Shop state
 window.hasShadowBallUpgrade = false;
@@ -98,6 +112,22 @@ export function initializeShop() {
         window.updateShopUI();
       }
     });
+
+  // Add splash damage upgrade handler
+  document
+    .getElementById("splashUpgrade")
+    .addEventListener("click", function () {
+      if (
+        !window.hasSplashUpgrade &&
+        window.score >= window.SPLASH_UPGRADE_COST
+      ) {
+        window.score -= window.SPLASH_UPGRADE_COST;
+        window.hasSplashUpgrade = true;
+        this.textContent = "SPLASH DAMAGE (Purchased)";
+        this.classList.add("purchased");
+        window.updateShopUI();
+      }
+    });
 }
 
 // Update shop UI
@@ -173,6 +203,21 @@ export function updateShopUI() {
   } else {
     burnChanceButton.textContent = "BURN CHANCE (Locked)";
   }
+
+  // Water upgrades
+  const splashButton = document.getElementById("splashUpgrade");
+
+  if (window.hasSplashUpgrade) {
+    splashButton.textContent = "SPLASH DAMAGE (Purchased)";
+    splashButton.classList.add("purchased");
+  } else {
+    splashButton.textContent = `SPLASH DAMAGE (${window.SPLASH_UPGRADE_COST} points)`;
+    if (window.score >= window.SPLASH_UPGRADE_COST) {
+      splashButton.classList.remove("disabled");
+    } else {
+      splashButton.classList.add("disabled");
+    }
+  }
 }
 
 // Reset shop state
@@ -184,6 +229,8 @@ export function resetShop() {
   window.hasBurnUpgrade = false;
   window.burnChance = BURN_CHANCE_BASE;
   window.burnChanceLevel = 0;
+
+  window.hasSplashUpgrade = false;
 
   updateShopUI();
 }
