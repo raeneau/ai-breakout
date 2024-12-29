@@ -86,6 +86,9 @@ let chainLength = CHAIN_BASE_LENGTH;
 let chainLengthLevel = 0;
 let chainChance = CHAIN_BASE_CHANCE;
 let chainChanceLevel = 0;
+let hasShadowBallUpgrade = false;
+let shadowBallChance = SHADOW_BALL_BASE_CHANCE;
+let shadowBallChanceLevel = 0;
 
 // Add key handler functions
 function keyDownHandler(e) {
@@ -235,6 +238,19 @@ export function initializeGame() {
       }
     });
 
+  // Add this to the initializeGame function with the other event listeners
+  document
+    .getElementById("multiballUpgrade")
+    .addEventListener("click", function () {
+      if (!hasShadowBallUpgrade && window.score >= SHADOW_BALL_COST) {
+        window.score -= SHADOW_BALL_COST;
+        hasShadowBallUpgrade = true;
+        this.textContent = "SHADOW BALL (Purchased)";
+        this.classList.add("purchased");
+        updateShopUI();
+      }
+    });
+
   // Start the game loop
   requestAnimationFrame(draw);
 }
@@ -299,7 +315,8 @@ function addNewBricks() {
 function areBricksCleared() {
   for (let c = 0; c < BRICK_COLS; c++) {
     for (let r = 0; r < BRICK_ROWS; r++) {
-      if (bricks[c][r].status === 1) {
+      // Only count bricks that still have status > 0
+      if (bricks[c][r].status > 0) {
         return false;
       }
     }
@@ -389,7 +406,6 @@ function collisionDetection() {
           }
 
           if (b.status === 0) {
-            // Add special scoring for gold bricks
             if (b.isGold) {
               pointsSinceLastMiss += GOLD_BRICK_POINTS;
             } else {
@@ -397,21 +413,21 @@ function collisionDetection() {
             }
             bricksDestroyed++;
             burningBricks.delete(`${c},${r}`);
-          }
 
-          // Check if all bricks are cleared
-          if (areBricksCleared()) {
-            if (!addNewBricks()) {
-              gameOver = true;
-              window.score += lastHitByPaddle
-                ? pointsSinceLastMiss * 2
-                : pointsSinceLastMiss;
-              ctx.font = "32px Arial";
-              ctx.fillStyle = "#0095DD";
-              ctx.textAlign = "center";
-              ctx.fillText("YOU WIN!", canvas.width / 2, canvas.height / 2);
-              drawResetButton();
-              return;
+            // Only check for cleared bricks after a brick is fully destroyed
+            if (areBricksCleared()) {
+              if (!addNewBricks()) {
+                gameOver = true;
+                window.score += lastHitByPaddle
+                  ? pointsSinceLastMiss * 2
+                  : pointsSinceLastMiss;
+                ctx.font = "32px Arial";
+                ctx.fillStyle = "#0095DD";
+                ctx.textAlign = "center";
+                ctx.fillText("YOU WIN!", canvas.width / 2, canvas.height / 2);
+                drawResetButton();
+                return;
+              }
             }
           }
         }
@@ -544,6 +560,8 @@ function drawBricks() {
 function drawScore() {
   ctx.font = "16px Arial";
   ctx.fillStyle = "#0095DD";
+
+  // Draw score on the left
   ctx.textAlign = "left";
   ctx.fillText("Score: " + window.score, 8, 20);
 
@@ -554,6 +572,10 @@ function drawScore() {
       : pointsSinceLastMiss;
     ctx.fillText("Potential: +" + potential, 8, 40);
   }
+
+  // Draw round counter on the right
+  ctx.textAlign = "right";
+  ctx.fillText("Round " + currentRound, canvas.width - 8, 20);
 }
 
 function drawResetButton() {
@@ -565,7 +587,8 @@ function drawResetButton() {
   ctx.fillText("Reset Game", canvas.width / 2, canvas.height / 2 + 45);
 }
 
-function resetGame() {
+// Export the resetGame function and attach it to window
+export function resetGame() {
   window.score = 0;
   gameOver = false;
   ballX = canvas.width / 2;
@@ -609,7 +632,11 @@ function resetGame() {
   chainLengthLevel = 0;
   chainChance = CHAIN_BASE_CHANCE;
   chainChanceLevel = 0;
+  hasShadowBallUpgrade = false;
+  shadowBallChance = SHADOW_BALL_BASE_CHANCE;
+  shadowBallChanceLevel = 0;
 }
+window.resetGame = resetGame;
 
 // Add the click handler function
 function handleGameClick(e) {
@@ -716,7 +743,22 @@ export function draw() {
         paddleGlowTime = PADDLE_GLOW_DURATION;
         createSparkles(ballX, ballY);
 
-        // Shadow ball spawning code...
+        // Add shadow ball spawning code here
+        if (
+          window.hasShadowBallUpgrade &&
+          Math.random() < window.shadowBallChance
+        ) {
+          const velocity = getRandomShadowBallVelocity();
+          tempBalls.push({
+            x: ballX,
+            y: ballY,
+            speedX: velocity.x,
+            speedY: velocity.y,
+          });
+          tempBallHits.push(0);
+        }
+
+        // Rest of collision code...
       } else {
         // Bottom wall hit - add regular points and reset
         window.score += pointsSinceLastMiss;
@@ -1072,8 +1114,6 @@ function updateShopUI() {
 function updateStats() {
   document.getElementById("bricksDestroyed").textContent = bricksDestroyed;
   document.getElementById("paddleBonusPoints").textContent = paddleBonusPoints;
-  document.getElementById("activeShadowBalls").textContent = tempBalls.length;
-  document.getElementById("currentRound").textContent = currentRound;
 
   const shadowBallStats = document.getElementById("shadowBallStats");
   if (hasShadowBallUpgrade) {
@@ -1168,6 +1208,22 @@ function updateBurningBricks() {
           pointsSinceLastMiss++;
           bricksDestroyed++;
           burningBricks.delete(key);
+
+          // Check if all bricks are cleared after a brick is destroyed by burning
+          if (areBricksCleared()) {
+            if (!addNewBricks()) {
+              gameOver = true;
+              window.score += lastHitByPaddle
+                ? pointsSinceLastMiss * 2
+                : pointsSinceLastMiss;
+              ctx.font = "32px Arial";
+              ctx.fillStyle = "#0095DD";
+              ctx.textAlign = "center";
+              ctx.fillText("YOU WIN!", canvas.width / 2, canvas.height / 2);
+              drawResetButton();
+              return;
+            }
+          }
         }
       }
     }

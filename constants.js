@@ -46,7 +46,7 @@ export const PADDLE_GLOW_DURATION = 30;
 export const SHADOW_BALL_COST = 50;
 export const SHADOW_BALL_BASE_CHANCE = 0.05;
 export const SHADOW_BALL_CHANCE_INCREMENT = 0.05;
-export const SHADOW_BALL_MAX_CHANCE = 0.3;
+export const SHADOW_BALL_MAX_CHANCE = 0.5;
 export const SHADOW_CHANCE_UPGRADE_COST = 30;
 
 export const BURN_UPGRADE_COST = 75;

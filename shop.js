@@ -39,6 +39,10 @@ window.hasBurnUpgrade = false;
 window.burnChance = BURN_CHANCE_BASE;
 window.burnChanceLevel = 0;
 
+// Make the functions available globally
+window.updateShopUI = updateShopUI;
+window.updateStats = updateStats;
+
 // Initialize shop
 export function initializeShop() {
   // Add click handlers for tabs
@@ -56,41 +60,91 @@ export function initializeShop() {
     });
   });
 
-  // Shadow ball upgrade handlers
-  document
-    .getElementById("multiballUpgrade")
-    .addEventListener("click", function () {
-      if (
-        !window.hasShadowBallUpgrade &&
-        window.score >= window.SHADOW_BALL_COST
-      ) {
-        window.score -= window.SHADOW_BALL_COST;
-        window.hasShadowBallUpgrade = true;
-        this.textContent = "SHADOW BALL (Purchased)";
-        this.classList.add("purchased");
-        window.updateShopUI();
-      }
-    });
+  // Set initial text for shadow ball upgrade
+  const shadowBallButton = document.getElementById("multiballUpgrade");
+  // Remove any existing listeners first
+  const newShadowBallButton = shadowBallButton.cloneNode(true);
+  shadowBallButton.parentNode.replaceChild(
+    newShadowBallButton,
+    shadowBallButton
+  );
 
-  document
-    .getElementById("shadowChanceUpgrade")
-    .addEventListener("click", function () {
-      if (
-        window.hasShadowBallUpgrade &&
-        window.shadowBallChance < window.SHADOW_BALL_MAX_CHANCE &&
-        window.score >= window.SHADOW_CHANCE_UPGRADE_COST
-      ) {
-        window.score -= window.SHADOW_CHANCE_UPGRADE_COST;
-        window.shadowBallChance += window.SHADOW_BALL_CHANCE_INCREMENT;
-        window.shadowBallChanceLevel++;
-        window.updateShopUI();
-      }
-    });
+  // Set initial text
+  newShadowBallButton.textContent = `SHADOW BALL (${window.SHADOW_BALL_COST} points)`;
+
+  // Add the click handler once
+  newShadowBallButton.addEventListener("click", function () {
+    if (
+      !window.hasShadowBallUpgrade &&
+      window.score >= window.SHADOW_BALL_COST
+    ) {
+      const currentScore = window.score; // Store current score
+
+      // First deduct the score
+      window.score = currentScore - window.SHADOW_BALL_COST;
+
+      // Initialize all shadow ball related variables on the window object
+      window.hasShadowBallUpgrade = true;
+      window.shadowBallChance = window.SHADOW_BALL_BASE_CHANCE;
+      window.shadowBallChanceLevel = 0;
+
+      // Update the button appearance
+      this.textContent = "SHADOW BALL (Purchased)";
+      this.classList.add("purchased");
+
+      // Update the shadow chance upgrade button
+      const shadowChanceButton = document.getElementById("shadowChanceUpgrade");
+      shadowChanceButton.classList.remove("locked");
+      shadowChanceButton.classList.remove("disabled");
+      shadowChanceButton.textContent = `SHADOW CHANCE (+${
+        window.SHADOW_BALL_CHANCE_INCREMENT * 100
+      }%) (${window.SHADOW_CHANCE_UPGRADE_COST} pts)`;
+
+      // Show and update stats
+      const shadowBallStats = document.getElementById("shadowBallStats");
+      shadowBallStats.style.display = "block";
+      document.getElementById("shadowBallChance").textContent =
+        Math.round(window.shadowBallChance * 100) + "%";
+
+      // Update UI
+      window.updateShopUI();
+      window.updateStats();
+    }
+  });
+
+  // Do the same for shadow chance upgrade button
+  const shadowChanceButton = document.getElementById("shadowChanceUpgrade");
+  const newShadowChanceButton = shadowChanceButton.cloneNode(true);
+  shadowChanceButton.parentNode.replaceChild(
+    newShadowChanceButton,
+    shadowChanceButton
+  );
+
+  newShadowChanceButton.addEventListener("click", function () {
+    if (
+      window.hasShadowBallUpgrade &&
+      window.shadowBallChance < window.SHADOW_BALL_MAX_CHANCE &&
+      window.score >= window.SHADOW_CHANCE_UPGRADE_COST
+    ) {
+      window.score = window.score - window.SHADOW_CHANCE_UPGRADE_COST;
+      window.shadowBallChance =
+        window.SHADOW_BALL_BASE_CHANCE +
+        (window.shadowBallChanceLevel + 1) *
+          window.SHADOW_BALL_CHANCE_INCREMENT;
+      window.shadowBallChanceLevel++;
+
+      document.getElementById("shadowBallChance").textContent =
+        Math.round(window.shadowBallChance * 100) + "%";
+
+      window.updateShopUI();
+      window.updateStats();
+    }
+  });
 
   // Burn upgrade handlers
   document.getElementById("burnUpgrade").addEventListener("click", function () {
     if (!window.hasBurnUpgrade && window.score >= window.BURN_UPGRADE_COST) {
-      window.score -= window.BURN_UPGRADE_COST;
+      window.score = window.score - window.BURN_UPGRADE_COST;
       window.hasBurnUpgrade = true;
       this.textContent = "BURN CHANCE (Purchased)";
       this.classList.add("purchased");
@@ -106,10 +160,13 @@ export function initializeShop() {
         window.burnChance < window.BURN_CHANCE_MAX &&
         window.score >= window.BURN_CHANCE_UPGRADE_COST
       ) {
-        window.score -= window.BURN_CHANCE_UPGRADE_COST;
-        window.burnChance += window.BURN_CHANCE_INCREMENT;
+        window.score = window.score - window.BURN_CHANCE_UPGRADE_COST;
+        window.burnChance =
+          window.BURN_CHANCE_BASE +
+          (window.burnChanceLevel + 1) * window.BURN_CHANCE_INCREMENT;
         window.burnChanceLevel++;
         window.updateShopUI();
+        window.updateStats();
       }
     });
 
@@ -140,17 +197,8 @@ export function updateShopUI() {
     shadowBallButton.textContent = "SHADOW BALL (Purchased)";
     shadowBallButton.classList.add("purchased");
     shadowChanceButton.classList.remove("locked");
-  } else {
-    shadowBallButton.textContent = `SHADOW BALL (${window.SHADOW_BALL_COST} points)`;
-    if (window.score >= window.SHADOW_BALL_COST) {
-      shadowBallButton.classList.remove("disabled");
-    } else {
-      shadowBallButton.classList.add("disabled");
-    }
-    shadowChanceButton.classList.add("locked");
-  }
+    shadowChanceButton.classList.remove("disabled");
 
-  if (window.hasShadowBallUpgrade) {
     if (window.shadowBallChance >= window.SHADOW_BALL_MAX_CHANCE) {
       shadowChanceButton.textContent = "SHADOW CHANCE (MAX)";
       shadowChanceButton.classList.add("purchased");
@@ -165,6 +213,13 @@ export function updateShopUI() {
       }
     }
   } else {
+    shadowBallButton.textContent = `SHADOW BALL (${window.SHADOW_BALL_COST} points)`;
+    if (window.score >= window.SHADOW_BALL_COST) {
+      shadowBallButton.classList.remove("disabled");
+    } else {
+      shadowBallButton.classList.add("disabled");
+    }
+    shadowChanceButton.classList.add("locked");
     shadowChanceButton.textContent = "SHADOW CHANCE (Locked)";
   }
 
@@ -218,6 +273,8 @@ export function updateShopUI() {
       splashButton.classList.add("disabled");
     }
   }
+
+  updateStats();
 }
 
 // Reset shop state
@@ -233,4 +290,33 @@ export function resetShop() {
   window.hasSplashUpgrade = false;
 
   updateShopUI();
+}
+
+// Add the updateStats function to shop.js
+function updateStats() {
+  document.getElementById("bricksDestroyed").textContent =
+    window.bricksDestroyed;
+  document.getElementById("paddleBonusPoints").textContent =
+    window.paddleBonusPoints;
+
+  // Update shadow ball stats
+  const shadowBallStats = document.getElementById("shadowBallStats");
+  if (window.hasShadowBallUpgrade) {
+    shadowBallStats.style.display = "block";
+    document.getElementById("shadowBallChance").textContent =
+      Math.round(window.shadowBallChance * 100) + "%";
+  } else {
+    shadowBallStats.style.display = "none";
+  }
+
+  const burnStats = document.getElementById("burnStats");
+  if (window.hasBurnUpgrade) {
+    burnStats.style.display = "block";
+    document.getElementById("burnChance").textContent =
+      Math.round(window.burnChance * 100) + "%";
+  } else {
+    burnStats.style.display = "none";
+  }
+
+  // ... rest of stats updates ...
 }
