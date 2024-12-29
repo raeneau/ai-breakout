@@ -71,3 +71,20 @@ export const PADDLE_INFLUENCE = 0.2; // Reduced from 0.3 to make paddle movement
 export const GOLD_PULSE_DURATION = 60; // One pulse cycle takes 60 frames
 export const GOLD_PULSE_MIN_BRIGHTNESS = 0.9; // Minimum brightness multiplier
 export const GOLD_PULSE_MAX_BRIGHTNESS = 1.1; // Maximum brightness multiplier
+
+// Add these with the other shop constants
+export const CHAIN_UPGRADE_COST = 150;
+export const CHAIN_LENGTH_UPGRADE_COST = 50;
+export const CHAIN_CHANCE = 0.25;
+export const CHAIN_BASE_LENGTH = 2;
+export const CHAIN_MAX_LENGTH = 5;
+export const CHAIN_LENGTH_INCREMENT = 1;
+export const CHAIN_COLOR = "#FFD700";
+export const CHAIN_LINE_WIDTH = 2;
+export const CHAIN_DURATION = 100;
+
+// Add these with the other chain lightning constants
+export const CHAIN_BASE_CHANCE = 0.05; // 5% base chance
+export const CHAIN_CHANCE_INCREMENT = 0.05; // 5% increase per upgrade
+export const CHAIN_MAX_CHANCE = 0.25; // 25% maximum chance
+export const CHAIN_CHANCE_UPGRADE_COST = 30; // Same cost as other chance upgrades

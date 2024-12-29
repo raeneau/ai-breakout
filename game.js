@@ -39,6 +39,19 @@ import {
   GOLD_PULSE_DURATION,
   GOLD_PULSE_MIN_BRIGHTNESS,
   GOLD_PULSE_MAX_BRIGHTNESS,
+  CHAIN_UPGRADE_COST,
+  CHAIN_CHANCE,
+  CHAIN_BASE_LENGTH,
+  CHAIN_COLOR,
+  CHAIN_LINE_WIDTH,
+  CHAIN_DURATION,
+  CHAIN_LENGTH_UPGRADE_COST,
+  CHAIN_MAX_LENGTH,
+  CHAIN_LENGTH_INCREMENT,
+  CHAIN_BASE_CHANCE,
+  CHAIN_CHANCE_INCREMENT,
+  CHAIN_MAX_CHANCE,
+  CHAIN_CHANCE_UPGRADE_COST,
 } from "./constants.js";
 
 // First, declare all canvas-related variables
@@ -67,6 +80,12 @@ let tempBallHits = [];
 let bricks = [];
 let ripples = [];
 let paddleGlowTime = 0;
+let hasChainUpgrade = false;
+let activeChains = [];
+let chainLength = CHAIN_BASE_LENGTH;
+let chainLengthLevel = 0;
+let chainChance = CHAIN_BASE_CHANCE;
+let chainChanceLevel = 0;
 
 // Add key handler functions
 function keyDownHandler(e) {
@@ -157,6 +176,18 @@ export function initializeGame() {
       }
     });
 
+  document
+    .getElementById("chainUpgrade")
+    .addEventListener("click", function () {
+      if (!hasChainUpgrade && window.score >= CHAIN_UPGRADE_COST) {
+        window.score -= CHAIN_UPGRADE_COST;
+        hasChainUpgrade = true;
+        this.textContent = "CHAIN LIGHTNING (Purchased)";
+        this.classList.add("purchased");
+        updateShopUI();
+      }
+    });
+
   // Add tab event listeners
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", function () {
@@ -171,6 +202,38 @@ export function initializeGame() {
       document.getElementById(tabId).style.display = "block";
     });
   });
+
+  // Add chain length upgrade handler
+  document
+    .getElementById("chainLengthUpgrade")
+    .addEventListener("click", function () {
+      if (
+        hasChainUpgrade &&
+        chainLength < CHAIN_MAX_LENGTH &&
+        window.score >= CHAIN_LENGTH_UPGRADE_COST
+      ) {
+        window.score -= CHAIN_LENGTH_UPGRADE_COST;
+        chainLength += CHAIN_LENGTH_INCREMENT;
+        chainLengthLevel++;
+        updateShopUI();
+      }
+    });
+
+  // Add chain chance upgrade handler
+  document
+    .getElementById("chainChanceUpgrade")
+    .addEventListener("click", function () {
+      if (
+        hasChainUpgrade &&
+        chainChance < CHAIN_MAX_CHANCE &&
+        window.score >= CHAIN_CHANCE_UPGRADE_COST
+      ) {
+        window.score -= CHAIN_CHANCE_UPGRADE_COST;
+        chainChance += CHAIN_CHANCE_INCREMENT;
+        chainChanceLevel++;
+        updateShopUI();
+      }
+    });
 
   // Start the game loop
   requestAnimationFrame(draw);
@@ -303,6 +366,11 @@ function collisionDetection() {
           ballSpeedY = -ballSpeedY;
           const originalStatus = b.status;
           b.status--;
+
+          // Add chain lightning check here
+          if (hasChainUpgrade && Math.random() < chainChance) {
+            triggerChainLightning(c, r);
+          }
 
           // Apply splash damage if upgrade is purchased and chance roll succeeds
           if (hasSplashUpgrade && Math.random() < SPLASH_DAMAGE_CHANCE) {
@@ -535,6 +603,12 @@ function resetGame() {
   currentRound = 1;
   ripples = [];
   paddleGlowTime = 0;
+  hasChainUpgrade = false;
+  activeChains = [];
+  chainLength = CHAIN_BASE_LENGTH;
+  chainLengthLevel = 0;
+  chainChance = CHAIN_BASE_CHANCE;
+  chainChanceLevel = 0;
 }
 
 // Add the click handler function
@@ -796,6 +870,15 @@ export function draw() {
       }
       return alive;
     });
+
+    // Update and draw chain lightning effects
+    activeChains = activeChains.filter((chain) => {
+      const alive = chain.update();
+      if (alive) {
+        chain.draw(ctx);
+      }
+      return alive;
+    });
   } else {
     // If game is over, just show the game over screen and reset button
     if (window.score === BRICK_ROWS * BRICK_COLS) {
@@ -934,6 +1017,55 @@ function updateShopUI() {
   } else {
     burnChanceButton.textContent = "BURN CHANCE (Locked)";
   }
+
+  // Chain upgrades
+  const chainButton = document.getElementById("chainUpgrade");
+  const chainChanceButton = document.getElementById("chainChanceUpgrade");
+  const chainLengthButton = document.getElementById("chainLengthUpgrade");
+
+  if (hasChainUpgrade) {
+    chainButton.textContent = "CHAIN LIGHTNING (Purchased)";
+    chainButton.classList.add("purchased");
+    chainChanceButton.classList.remove("locked");
+    chainLengthButton.classList.remove("locked");
+
+    if (chainChance >= CHAIN_MAX_CHANCE) {
+      chainChanceButton.textContent = "CHAIN CHANCE (MAX)";
+      chainChanceButton.classList.add("purchased");
+    } else {
+      chainChanceButton.textContent = `CHAIN CHANCE (+${
+        CHAIN_CHANCE_INCREMENT * 100
+      }%) (${CHAIN_CHANCE_UPGRADE_COST} pts)`;
+      if (window.score >= CHAIN_CHANCE_UPGRADE_COST) {
+        chainChanceButton.classList.remove("disabled");
+      } else {
+        chainChanceButton.classList.add("disabled");
+      }
+    }
+
+    if (chainLength >= CHAIN_MAX_LENGTH) {
+      chainLengthButton.textContent = "CHAIN LENGTH (MAX)";
+      chainLengthButton.classList.add("purchased");
+    } else {
+      chainLengthButton.textContent = `CHAIN LENGTH +1 (${CHAIN_LENGTH_UPGRADE_COST} points)`;
+      if (window.score >= CHAIN_LENGTH_UPGRADE_COST) {
+        chainLengthButton.classList.remove("disabled");
+      } else {
+        chainLengthButton.classList.add("disabled");
+      }
+    }
+  } else {
+    chainButton.textContent = `CHAIN LIGHTNING (${CHAIN_UPGRADE_COST} points)`;
+    if (window.score >= CHAIN_UPGRADE_COST) {
+      chainButton.classList.remove("disabled");
+    } else {
+      chainButton.classList.add("disabled");
+    }
+    chainChanceButton.classList.add("locked");
+    chainChanceButton.textContent = "CHAIN CHANCE (Locked)";
+    chainLengthButton.classList.add("locked");
+    chainLengthButton.textContent = "CHAIN LENGTH (Locked)";
+  }
 }
 
 // Add this function to update stats display
@@ -969,6 +1101,16 @@ function updateStats() {
       Math.round(SPLASH_DAMAGE_CHANCE * 100) + "%";
   } else {
     splashStats.style.display = "none";
+  }
+
+  // Add chain lightning stats
+  const chainStats = document.getElementById("chainStats");
+  if (hasChainUpgrade) {
+    chainStats.style.display = "block";
+    document.getElementById("chainChance").textContent =
+      Math.round(chainChance * 100) + "%";
+  } else {
+    chainStats.style.display = "none";
   }
 }
 
@@ -1069,5 +1211,123 @@ class Ripple {
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.closePath();
+  }
+}
+
+// Add this class to manage chain lightning effects
+class ChainLightning {
+  constructor(startX, startY, endX, endY) {
+    this.startX = startX;
+    this.startY = startY;
+    this.endX = endX;
+    this.endY = endY;
+    this.life = CHAIN_DURATION;
+  }
+
+  update() {
+    this.life--;
+    return this.life > 0;
+  }
+
+  draw(ctx) {
+    const opacity = this.life / CHAIN_DURATION;
+    ctx.beginPath();
+    ctx.moveTo(this.startX, this.startY);
+    ctx.lineTo(this.endX, this.endY);
+    ctx.strokeStyle = `rgba(255, 215, 0, ${opacity})`;
+    ctx.lineWidth = CHAIN_LINE_WIDTH;
+    ctx.stroke();
+    ctx.closePath();
+  }
+}
+
+// Add this function to find the next brick in a chain
+function findNextBrick(currentCol, currentRow, excludedBricks) {
+  const possibleBricks = [];
+
+  // Define the four adjacent directions (up, right, down, left)
+  const directions = [
+    [0, -1], // up
+    [1, 0], // right
+    [0, 1], // down
+    [-1, 0], // left
+  ];
+
+  // Check only adjacent bricks
+  for (const [dc, dr] of directions) {
+    const newCol = currentCol + dc;
+    const newRow = currentRow + dr;
+
+    // Skip if out of bounds
+    if (
+      newCol < 0 ||
+      newCol >= BRICK_COLS ||
+      newRow < 0 ||
+      newRow >= BRICK_ROWS
+    )
+      continue;
+
+    // Skip if this brick is already in the chain
+    if (excludedBricks.has(`${newCol},${newRow}`)) continue;
+
+    // Skip if brick is already destroyed
+    if (bricks[newCol][newRow].status === 0) continue;
+
+    // Add to possible targets
+    possibleBricks.push({ col: newCol, row: newRow });
+  }
+
+  // Return random adjacent brick from possibilities, or null if none found
+  if (possibleBricks.length === 0) return null;
+  return possibleBricks[Math.floor(Math.random() * possibleBricks.length)];
+}
+
+// Add this function to handle chain lightning effect
+function triggerChainLightning(startCol, startRow) {
+  let currentCol = startCol;
+  let currentRow = startRow;
+  const chainedBricks = new Set([`${startCol},${startRow}`]);
+
+  for (let i = 0; i < chainLength - 1; i++) {
+    const nextBrick = findNextBrick(currentCol, currentRow, chainedBricks);
+    if (!nextBrick) break;
+
+    // Add visual effect
+    const startX =
+      currentCol * (BRICK_WIDTH + BRICK_PADDING) +
+      BRICK_OFFSET_LEFT +
+      BRICK_WIDTH / 2;
+    const startY =
+      currentRow * (BRICK_HEIGHT + BRICK_PADDING) +
+      BRICK_OFFSET_TOP +
+      BRICK_HEIGHT / 2;
+    const endX =
+      nextBrick.col * (BRICK_WIDTH + BRICK_PADDING) +
+      BRICK_OFFSET_LEFT +
+      BRICK_WIDTH / 2;
+    const endY =
+      nextBrick.row * (BRICK_HEIGHT + BRICK_PADDING) +
+      BRICK_OFFSET_TOP +
+      BRICK_HEIGHT / 2;
+
+    activeChains.push(new ChainLightning(startX, startY, endX, endY));
+
+    // Damage the brick
+    const originalStatus = bricks[nextBrick.col][nextBrick.row].status;
+    bricks[nextBrick.col][nextBrick.row].status--;
+
+    if (bricks[nextBrick.col][nextBrick.row].status === 0) {
+      if (bricks[nextBrick.col][nextBrick.row].isGold) {
+        pointsSinceLastMiss += GOLD_BRICK_POINTS;
+      } else {
+        pointsSinceLastMiss += originalStatus;
+      }
+      bricksDestroyed++;
+      burningBricks.delete(`${nextBrick.col},${nextBrick.row}`);
+    }
+
+    chainedBricks.add(`${nextBrick.col},${nextBrick.row}`);
+    currentCol = nextBrick.col;
+    currentRow = nextBrick.row;
   }
 }

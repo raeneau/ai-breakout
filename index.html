@@ -143,6 +143,10 @@
                 <div class="stat-label">Current Round</div>
                 <div id="currentRound" class="stat-value">1</div>
             </div>
+            <div id="chainStats" class="stat-item" style="display: none;">
+                <div class="stat-label">Chain Chance</div>
+                <div id="chainChance" class="stat-value">0%</div>
+            </div>
         </div>
         <canvas id="gameCanvas" width="800" height="600"></canvas>
         <div class="shop-panel">
@@ -151,6 +155,7 @@
                 <div class="tab active" data-tab="shadow">Shadow</div>
                 <div class="tab" data-tab="fire">Fire</div>
                 <div class="tab" data-tab="water">Water</div>
+                <div class="tab" data-tab="lightning">Lightning</div>
             </div>
             <div class="tab-content" id="shadowTab">
                 <div id="multiballUpgrade" class="shop-item">
@@ -171,6 +176,17 @@
             <div class="tab-content" id="waterTab" style="display: none;">
                 <div id="splashUpgrade" class="shop-item">
                     SPLASH DAMAGE (100 points)
+                </div>
+            </div>
+            <div class="tab-content" id="lightningTab" style="display: none;">
+                <div id="chainUpgrade" class="shop-item">
+                    CHAIN LIGHTNING (150 points)
+                </div>
+                <div id="chainChanceUpgrade" class="shop-item disabled">
+                    CHAIN CHANCE (30 points)
+                </div>
+                <div id="chainLengthUpgrade" class="shop-item disabled">
+                    CHAIN LENGTH (50 points)
                 </div>
             </div>
         </div>
